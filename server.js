@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const fetch = require('node-fetch');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -16,11 +18,47 @@ app.use(cors({
 const spotify_client_id = process.env.SPOTIFY_CLIENT_ID;
 const spotify_client_secret = process.env.SPOTIFY_CLIENT_SECRET;
 
-// In-memory token storage
+// Token storage (persisted to file)
+const TOKEN_FILE = path.join(__dirname, '.spotify_tokens.json');
+
 let tokens = {
   access_token: '',
   refresh_token: '',
   expires_at: 0
+};
+
+// Load tokens from file on startup
+const loadTokens = () => {
+  try {
+    if (fs.existsSync(TOKEN_FILE)) {
+      const data = fs.readFileSync(TOKEN_FILE, 'utf8');
+      tokens = JSON.parse(data);
+      console.log('✅ Loaded saved tokens from file');
+      console.log('🔑 Access token:', tokens.access_token ? tokens.access_token.substring(0, 20) + '...' : 'NONE');
+      console.log('🔄 Refresh token:', tokens.refresh_token ? 'EXISTS' : 'NONE');
+      console.log('⏰ Expires at:', tokens.expires_at ? new Date(tokens.expires_at).toLocaleString() : 'UNKNOWN');
+      
+      // Check if token is expired and refresh if needed
+      if (tokens.refresh_token && Date.now() >= tokens.expires_at) {
+        console.log('⚠️ Access token expired, refreshing...');
+        refreshAccessToken();
+      }
+    } else {
+      console.log('ℹ️ No saved tokens found - user needs to login');
+    }
+  } catch (error) {
+    console.error('❌ Error loading tokens:', error);
+  }
+};
+
+// Save tokens to file
+const saveTokens = () => {
+  try {
+    fs.writeFileSync(TOKEN_FILE, JSON.stringify(tokens, null, 2));
+    console.log('💾 Tokens saved to file');
+  } catch (error) {
+    console.error('❌ Error saving tokens:', error);
+  }
 };
 
 // Determine redirect URI based on environment
@@ -73,6 +111,7 @@ const refreshAccessToken = async () => {
         tokens.refresh_token = data.refresh_token;
       }
       
+      saveTokens();
       console.log('✅ Access token refreshed!');
       return true;
     } else {
@@ -84,6 +123,14 @@ const refreshAccessToken = async () => {
     return false;
   }
 };
+
+// Auto-refresh token before it expires
+setInterval(() => {
+  if (tokens.refresh_token && Date.now() >= tokens.expires_at - (10 * 60 * 1000)) {
+    console.log('⏰ Token expiring soon, auto-refreshing...');
+    refreshAccessToken();
+  }
+}, 10 * 60 * 1000);
 
 // Login - Request User Authorization
 app.get('/auth/login', (req, res) => {
@@ -142,12 +189,13 @@ app.get('/auth/callback', async (req, res) => {
       tokens.refresh_token = data.refresh_token;
       tokens.expires_at = Date.now() + (data.expires_in * 1000);
       
-      console.log('✅ Tokens received!');
+      saveTokens();
+      
+      console.log('✅ Tokens received and saved!');
       console.log('🎵 Access token:', tokens.access_token.substring(0, 20) + '...');
       
       // Redirect back to your app
-      // Redirect back to CD screen
-    res.redirect('https://shauneekai.com/#cd')
+      res.redirect('https://shauneekai.com/?spotify=connected');
     } else {
       console.error('❌ Failed to get token:', data);
       res.send('Authentication failed: ' + JSON.stringify(data));
@@ -176,8 +224,15 @@ app.get('/auth/token', async (req, res) => {
 
 // Health check
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', message: 'iloveshaunee auth server running' });
+  res.json({ 
+    status: 'ok', 
+    message: 'iloveshaunee auth server running',
+    has_token: !!tokens.access_token
+  });
 });
+
+// Load tokens on startup
+loadTokens();
 
 app.listen(PORT, () => {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
