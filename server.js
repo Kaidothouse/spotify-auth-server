@@ -8,6 +8,9 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+// Enable JSON body parsing
+app.use(express.json());
+
 // Enable CORS for your domains
 app.use(cors({ 
   origin: ['https://shauneekai.com', 'http://localhost:5173', 'https://iloveshaunee.web.app'],
@@ -131,6 +134,24 @@ setInterval(() => {
     refreshAccessToken();
   }
 }, 10 * 60 * 1000);
+
+// Manual token setup endpoint (use once, then remove)
+app.post('/setup-token', (req, res) => {
+  const { access_token, refresh_token, expires_at } = req.body;
+  
+  if (access_token && refresh_token) {
+    tokens.access_token = access_token;
+    tokens.refresh_token = refresh_token;
+    tokens.expires_at = expires_at;
+    
+    saveTokens();
+    
+    console.log('✅ Tokens manually set!');
+    res.json({ success: true, message: 'Tokens saved!' });
+  } else {
+    res.status(400).json({ error: 'Missing token data' });
+  }
+});
 
 // Login - Request User Authorization
 app.get('/auth/login', (req, res) => {
