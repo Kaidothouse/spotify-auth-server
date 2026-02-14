@@ -263,4 +263,4 @@ app.listen(PORT, () => {
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📍 Redirect URI: ${getRedirectUri()}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-});
+});// Updated
