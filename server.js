@@ -26,7 +26,7 @@ let tokens = {
 // Determine redirect URI based on environment
 const getRedirectUri = () => {
   return process.env.NODE_ENV === 'production'
-    ? 'https://shauneekai.com/auth/callback'
+    ? 'https://spotify-auth-server-7bp9.onrender.com/auth/callback'
     : 'http://127.0.0.1:5173/auth/callback';
 };
 
