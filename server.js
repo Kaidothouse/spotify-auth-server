@@ -146,7 +146,8 @@ app.get('/auth/callback', async (req, res) => {
       console.log('🎵 Access token:', tokens.access_token.substring(0, 20) + '...');
       
       // Redirect back to your app
-      res.redirect('https://shauneekai.com/?spotify=connected');
+      // Redirect back to CD screen
+    res.redirect('https://shauneekai.com/#cd')
     } else {
       console.error('❌ Failed to get token:', data);
       res.send('Authentication failed: ' + JSON.stringify(data));
