@@ -261,11 +261,64 @@ app.get('/auth/token', async (req, res) => {
 
 // Health check
 app.get('/', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     message: 'iloveshaunee auth server running',
     has_token: !!tokens.access_token
   });
+});
+
+// Debug endpoint - shows what env vars are set (no secrets exposed)
+app.get('/debug', async (req, res) => {
+  const debugInfo = {
+    has_client_id: !!spotify_client_id,
+    client_id_preview: spotify_client_id ? spotify_client_id.substring(0, 8) + '...' : 'MISSING',
+    has_client_secret: !!spotify_client_secret,
+    has_refresh_token_env: !!process.env.SPOTIFY_REFRESH_TOKEN,
+    refresh_token_env_preview: process.env.SPOTIFY_REFRESH_TOKEN ? process.env.SPOTIFY_REFRESH_TOKEN.substring(0, 10) + '...' : 'MISSING',
+    has_refresh_token_memory: !!tokens.refresh_token,
+    has_access_token: !!tokens.access_token,
+    token_file_exists: fs.existsSync(TOKEN_FILE),
+    expires_at: tokens.expires_at ? new Date(tokens.expires_at).toISOString() : 'not set',
+    is_expired: Date.now() >= tokens.expires_at,
+    node_env: process.env.NODE_ENV || 'not set'
+  };
+
+  // Try a refresh right now and report the result
+  if (tokens.refresh_token && spotify_client_id && spotify_client_secret) {
+    try {
+      const response = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + Buffer.from(spotify_client_id + ':' + spotify_client_secret).toString('base64'),
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: tokens.refresh_token
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        tokens.access_token = data.access_token;
+        tokens.expires_at = Date.now() + (data.expires_in * 1000);
+        if (data.refresh_token) tokens.refresh_token = data.refresh_token;
+        saveTokens();
+        debugInfo.live_refresh = 'SUCCESS';
+        debugInfo.has_access_token = true;
+      } else {
+        debugInfo.live_refresh = 'FAILED';
+        debugInfo.refresh_error = data;
+      }
+    } catch (err) {
+      debugInfo.live_refresh = 'ERROR';
+      debugInfo.refresh_error = err.message;
+    }
+  } else {
+    debugInfo.live_refresh = 'SKIPPED - missing credentials';
+  }
+
+  res.json(debugInfo);
 });
 
 // Load tokens on startup, then start listening
