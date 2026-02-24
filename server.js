@@ -31,7 +31,7 @@ let tokens = {
 };
 
 // Load tokens on startup: try file first, fall back to environment variables
-const loadTokens = () => {
+const loadTokens = async () => {
   try {
     if (fs.existsSync(TOKEN_FILE)) {
       const data = fs.readFileSync(TOKEN_FILE, 'utf8');
@@ -55,7 +55,7 @@ const loadTokens = () => {
     // Refresh if expired or missing
     if (tokens.refresh_token && (!tokens.access_token || Date.now() >= tokens.expires_at)) {
       console.log('⚠️ Access token expired or missing, refreshing...');
-      refreshAccessToken();
+      await refreshAccessToken();
     }
   } catch (error) {
     console.error('❌ Error loading tokens:', error);
@@ -98,7 +98,15 @@ const refreshAccessToken = async () => {
   }
   
   console.log('🔄 Refreshing access token...');
-  
+  console.log('📋 Using Client ID:', spotify_client_id ? spotify_client_id.substring(0, 8) + '...' : 'MISSING!');
+  console.log('🔑 Using Client Secret:', spotify_client_secret ? 'SET' : 'MISSING!');
+  console.log('🔄 Using Refresh Token:', tokens.refresh_token ? tokens.refresh_token.substring(0, 10) + '...' : 'MISSING!');
+
+  if (!spotify_client_id || !spotify_client_secret) {
+    console.error('❌ Cannot refresh: Missing SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET env vars');
+    return false;
+  }
+
   try {
     const response = await fetch('https://accounts.spotify.com/api/token', {
       method: 'POST',
@@ -111,26 +119,26 @@ const refreshAccessToken = async () => {
         refresh_token: tokens.refresh_token
       })
     });
-    
+
     const data = await response.json();
-    
+
     if (response.ok) {
       tokens.access_token = data.access_token;
       tokens.expires_at = Date.now() + (data.expires_in * 1000);
-      
+
       if (data.refresh_token) {
         tokens.refresh_token = data.refresh_token;
       }
-      
+
       saveTokens();
-      console.log('✅ Access token refreshed!');
+      console.log('✅ Access token refreshed! Expires at:', new Date(tokens.expires_at).toLocaleString());
       return true;
     } else {
-      console.error('❌ Failed to refresh token:', data);
+      console.error('❌ Failed to refresh token:', JSON.stringify(data));
       return false;
     }
   } catch (error) {
-    console.error('❌ Error refreshing token:', error);
+    console.error('❌ Error refreshing token:', error.message);
     return false;
   }
 };
@@ -260,15 +268,17 @@ app.get('/', (req, res) => {
   });
 });
 
-// Load tokens on startup
-loadTokens();
-
-app.listen(PORT, () => {
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`🚀 Server listening at http://localhost:${PORT}`);
-  console.log(`📋 Client ID: ${spotify_client_id ? 'Set ✅' : 'Missing ❌'}`);
-  console.log(`🔑 Client Secret: ${spotify_client_secret ? 'Set ✅' : 'Missing ❌'}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📍 Redirect URI: ${getRedirectUri()}`);
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-});// Updated
+// Load tokens on startup, then start listening
+loadTokens().then(() => {
+  app.listen(PORT, () => {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`🚀 Server listening at http://localhost:${PORT}`);
+    console.log(`📋 Client ID: ${spotify_client_id ? 'Set ✅' : 'Missing ❌'}`);
+    console.log(`🔑 Client Secret: ${spotify_client_secret ? 'Set ✅' : 'Missing ❌'}`);
+    console.log(`🔄 Refresh Token (env): ${process.env.SPOTIFY_REFRESH_TOKEN ? 'Set ✅' : 'Missing ❌'}`);
+    console.log(`🎵 Access Token: ${tokens.access_token ? 'Ready ✅' : 'Missing ❌'}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`📍 Redirect URI: ${getRedirectUri()}`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  });
+});
