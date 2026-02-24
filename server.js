@@ -30,24 +30,32 @@ let tokens = {
   expires_at: 0
 };
 
-// Load tokens from file on startup
+// Load tokens on startup: try file first, fall back to environment variables
 const loadTokens = () => {
   try {
     if (fs.existsSync(TOKEN_FILE)) {
       const data = fs.readFileSync(TOKEN_FILE, 'utf8');
       tokens = JSON.parse(data);
       console.log('✅ Loaded saved tokens from file');
-      console.log('🔑 Access token:', tokens.access_token ? tokens.access_token.substring(0, 20) + '...' : 'NONE');
-      console.log('🔄 Refresh token:', tokens.refresh_token ? 'EXISTS' : 'NONE');
-      console.log('⏰ Expires at:', tokens.expires_at ? new Date(tokens.expires_at).toLocaleString() : 'UNKNOWN');
-      
-      // Check if token is expired and refresh if needed
-      if (tokens.refresh_token && Date.now() >= tokens.expires_at) {
-        console.log('⚠️ Access token expired, refreshing...');
-        refreshAccessToken();
-      }
+    } else if (process.env.SPOTIFY_REFRESH_TOKEN) {
+      // Fallback: bootstrap from environment variable (survives Render redeploys)
+      console.log('✅ Loaded refresh token from environment variable');
+      tokens.refresh_token = process.env.SPOTIFY_REFRESH_TOKEN;
+      tokens.access_token = '';
+      tokens.expires_at = 0; // Force an immediate refresh
     } else {
       console.log('ℹ️ No saved tokens found - user needs to login');
+      return;
+    }
+
+    console.log('🔑 Access token:', tokens.access_token ? tokens.access_token.substring(0, 20) + '...' : 'NONE');
+    console.log('🔄 Refresh token:', tokens.refresh_token ? 'EXISTS' : 'NONE');
+    console.log('⏰ Expires at:', tokens.expires_at ? new Date(tokens.expires_at).toLocaleString() : 'UNKNOWN');
+
+    // Refresh if expired or missing
+    if (tokens.refresh_token && (!tokens.access_token || Date.now() >= tokens.expires_at)) {
+      console.log('⚠️ Access token expired or missing, refreshing...');
+      refreshAccessToken();
     }
   } catch (error) {
     console.error('❌ Error loading tokens:', error);
